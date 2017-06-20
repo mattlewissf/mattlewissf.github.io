@@ -1,0 +1,546 @@
+
+
+<!-- Custom stylesheet, it must be in the same directory as the html file -->
+<link rel="stylesheet" href="custom.css">
+
+<!-- Loading mathjax macro -->
+<!-- Load mathjax -->
+    <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
+    <!-- MathJax configuration -->
+    <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+        tex2jax: {
+            inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+            displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+            processEscapes: true,
+            processEnvironments: true
+        },
+        // Center justify equations in code and markdown cells. Elsewhere
+        // we use CSS to left justify single line equations in code cells.
+        displayAlign: 'center',
+        "HTML-CSS": {
+            styles: {'.MathJax_Display': {"margin": 0}},
+            linebreaks: { automatic: true }
+        }
+    });
+    </script>
+    <!-- End of mathjax configuration --></head>
+<body>
+  <div tabindex="-1" id="notebook" class="border-box-sizing">
+    <div class="container" id="notebook-container">
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>This post is a walkthrough of how I assembled the data I'm using for my posts on how popular music has changed over the years. I'll be going through the process and what I used, as well as discussing some of the limitations of the data and my process and methods.</p>
+<p>I'll be including some code snippets, but feel free to check out my github rep for all of the code I used in my analyis (and even some code I didn't).</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Before we get started, it might help to set out some definitions and what data I'm using.</p>
+<p><strong>Popular music</strong></p>
+<p>I'm using the Billboard Hot 100 as a proxy for popular music. The Hot 100 captures a weekly snapshot of the pop music landscape, and tracks songs as they increase and decrease in popularity, so there's a lot that we can do with this data source. However, using pop chats to estimate the idea of pop music throughout the last sixty years is a pretty blunt approach: since the Hot 100 focuses on singles, hugely popular albums can be underrepresented; collectively popular types of music with clear chart-toppers don't always show up; and freak non-representative type songs can hold high chart positions, but give much insight into the general music of the time (be honest: name another dance-pop flamenco songs form the early 1990s beside the Macarena). I used Billboard.py to access chart records from 1962 to the current chart period.</p>
+<p><strong>Music features</strong></p>
+<p>I'm getting song feature data from the <a href="https://developer.spotify.com/web-api/">fantastic Spotify API</a>. In particular I'm making use of their 'audio features,' calculated values around subjective-ish attributes. Their API gives you access to liveness, energy, valence (close to 'happiness' or mood), tempo, loudness, instrumentalness, acousticness; and most importantly 'danceability'.</p>
+<p>A big caveat: it isn't clear what factors contribute to attributes like 'danceability' as Spotify sees it, and a few of the other featues are similarly a black box from our end. [Do you have some insight into the nitty gritty of how these features were calculated? <a href="https://github.com/mattlewissf/mattlewissf.github.io/issues">Holler at me!</a>]</p>
+<p>So: we're putting our faith into the the secret brew Spotify's data science team has concocted, and hoping it maps to the real world.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Grabbing-the-data">Grabbing the data<a class="anchor-link" href="#Grabbing-the-data">&#182;</a></h2><p>The first step was getting the Hot 100 chart information. Convieniently, Billboard.py provides tracks in a chart object (which come out weekly throughout the year), and gives a ton of information about current chart rank and how a track has moved around. Most usefully, Billboard.py gives you a Spotify ID string for the track, so you don't have to search around for the song specifically.</p>
+<p>I used Spotifpy to connect the to the Spotify API, which made things pretty managable:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[2]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="c1"># import spotipy</span>
+<span class="c1"># from spotipy.oauth2 import SpotifyClientCredentials</span>
+
+<span class="c1"># client_credentials_manager = SpotifyClientCredentials(client_id = &#39;xxxxxxxxxxxxx&#39;,</span>
+<span class="c1"># client_secret = &#39;xxxxxxxxxxxxx&#39;)</span>
+
+<span class="c1"># sp = spotipy.Spotify(client_credentials_manager=client_credentials_manage</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>There's 100 tracks in an Top 100 chart, and since Spotify seems to throttle you if you hit their API too many times all of a sudden, I used their bulk API for audio_features (with two calls for each chart, since they 50 is the maximum track return)</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="k">def</span> <span class="nf">grab_bulk_audio_features</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+  <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">  Spotify / spotipy has a bulk id api endpoint that takes 50 ids max.</span>
+<span class="sd">  &#39;&#39;&#39;</span>
+  <span class="n">key_list</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+  <span class="n">keys_list_a</span> <span class="o">=</span> <span class="n">key_list</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">50</span><span class="p">]</span>
+  <span class="n">keys_list_b</span> <span class="o">=</span> <span class="n">key_list</span><span class="p">[</span><span class="mi">50</span><span class="p">:]</span>
+  <span class="n">api_result_a</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">audio_features</span><span class="p">(</span><span class="n">keys_list_a</span><span class="p">)</span> <span class="c1"># comes back as a list, change name</span>
+  <span class="n">api_result_b</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">audio_features</span><span class="p">(</span><span class="n">keys_list_b</span><span class="p">)</span>
+  <span class="n">api_result</span> <span class="o">=</span> <span class="n">api_result_a</span> <span class="o">+</span> <span class="n">api_result_b</span>
+
+  <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="n">api_result</span><span class="p">:</span>
+  <span class="k">if</span> <span class="n">feature</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+  <span class="k">try</span><span class="p">:</span>
+  <span class="n">spot_id</span> <span class="o">=</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+  <span class="n">data</span><span class="p">[</span><span class="n">spot_id</span><span class="p">][</span><span class="s1">&#39;audio_features&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">],</span> <span class="s1">&#39;liveness&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;liveness&#39;</span><span class="p">],</span>\
+  <span class="s1">&#39;danceability&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;danceability&#39;</span><span class="p">],</span> <span class="s1">&#39;speechiness&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;speechiness&#39;</span><span class="p">],</span>\
+  <span class="s1">&#39;instrumentalness&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;instrumentalness&#39;</span><span class="p">],</span> <span class="s1">&#39;liveness&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;liveness&#39;</span><span class="p">],</span> \
+  <span class="s1">&#39;tempo&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;tempo&#39;</span><span class="p">],</span> <span class="s1">&#39;valence&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;valence&#39;</span><span class="p">],</span> \
+  <span class="s1">&#39;acousticness&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;acousticness&#39;</span><span class="p">],</span> <span class="s1">&#39;loudness&#39;</span><span class="p">:</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;loudness&#39;</span><span class="p">]}</span>
+  <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+  <span class="k">print</span><span class="p">(</span><span class="s1">&#39;key error&#39;</span><span class="p">)</span>
+  <span class="k">return</span> <span class="n">data</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>One thing I did run into was getting errors with both Billboard and Spotify's APIs which required a lot of try / except clauses in the code. Eventually I figured out that trying to grab all of the data from Spotify at once wasn't working, so I ran each decade separately and just concatenated the dataframes later.  I also noticed I wasn't always getting all 100 of chart tracks back from Spotify, though the data is pretty good until the 1970s.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Normalizing-and-weighting">Normalizing and weighting<a class="anchor-link" href="#Normalizing-and-weighting">&#182;</a></h2><p>Once I had my data put into a pandas dataframe, it was time to take a look at it. Most of the audio features Spotify provides (danceability, valence) are already normalized between 0 and 1. However, tempo is provided as a beats per minute value, and loudness is confusingly presented as 'decibal' values from -60 to 0.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[5]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="kn">import</span> <span class="nn">pandas</span> <span class="kn">as</span> <span class="nn">pd</span>
+<span class="n">example_frame</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="s1">&#39;pre_transform_ex.pkl&#39;</span><span class="p">)</span>
+<span class="n">example_frame</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt output_prompt">Out[5]:</div>
+
+<div class="output_html rendered_html output_subarea output_execute_result">
+<div>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>title</th>
+      <th>artist</th>
+      <th>change</th>
+      <th>rank</th>
+      <th>last_pos</th>
+      <th>peak pos</th>
+      <th>weeks</th>
+      <th>energy</th>
+      <th>liveness</th>
+      <th>danceability</th>
+      <th>speechiness</th>
+      <th>acousticness</th>
+      <th>instrumentalness</th>
+      <th>liveness</th>
+      <th>tempo</th>
+      <th>valence</th>
+      <th>loudness</th>
+      <th>date</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Humble.</td>
+      <td>Kendrick Lamar</td>
+      <td>0</td>
+      <td>5</td>
+      <td>5</td>
+      <td>1</td>
+      <td>7</td>
+      <td>0.591</td>
+      <td>0.0897</td>
+      <td>0.907</td>
+      <td>0.105</td>
+      <td>0.000359</td>
+      <td>2.81e-05</td>
+      <td>0.0897</td>
+      <td>149.992</td>
+      <td>0.419</td>
+      <td>-7.507</td>
+      <td>2017-06-03</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Magnolia</td>
+      <td>Playboi Carti</td>
+      <td>+8</td>
+      <td>55</td>
+      <td>63</td>
+      <td>49</td>
+      <td>3</td>
+      <td>0.586</td>
+      <td>0.46</td>
+      <td>0.791</td>
+      <td>0.29</td>
+      <td>0.012</td>
+      <td>0</td>
+      <td>0.46</td>
+      <td>163.029</td>
+      <td>0.42</td>
+      <td>-7.372</td>
+      <td>2017-06-03</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>There's Nothing Holdin' Me Back</td>
+      <td>Shawn Mendes</td>
+      <td>+8</td>
+      <td>32</td>
+      <td>40</td>
+      <td>22</td>
+      <td>4</td>
+      <td>0.801</td>
+      <td>0.0891</td>
+      <td>0.856</td>
+      <td>0.0577</td>
+      <td>0.394</td>
+      <td>0</td>
+      <td>0.0891</td>
+      <td>121.975</td>
+      <td>0.965</td>
+      <td>-4.027</td>
+      <td>2017-06-03</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>The Weekend</td>
+      <td>Brantley Gilbert</td>
+      <td>-1</td>
+      <td>69</td>
+      <td>68</td>
+      <td>64</td>
+      <td>20</td>
+      <td>0.842</td>
+      <td>0.0548</td>
+      <td>0.524</td>
+      <td>0.0448</td>
+      <td>0.0537</td>
+      <td>0</td>
+      <td>0.0548</td>
+      <td>82.002</td>
+      <td>0.683</td>
+      <td>-4.79</td>
+      <td>2017-06-03</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Bounce Back</td>
+      <td>Big Sean</td>
+      <td>-5</td>
+      <td>50</td>
+      <td>45</td>
+      <td>6</td>
+      <td>28</td>
+      <td>0.516</td>
+      <td>0.129</td>
+      <td>0.788</td>
+      <td>0.219</td>
+      <td>0.1</td>
+      <td>0</td>
+      <td>0.129</td>
+      <td>81.497</td>
+      <td>0.246</td>
+      <td>-6.807</td>
+      <td>2017-06-03</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Since I wanted to normalize those values:</p>
+$$
+normalized_x = (x - min(x))  /  (max(x) - min(x))
+$$<p></p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="c1"># normalize tempo into 0-1 </span>
+    <span class="n">t_max</span> <span class="o">=</span> <span class="mi">200</span>
+    <span class="n">t_min</span> <span class="o">=</span> <span class="mi">40</span>
+    <span class="n">tempo_norm</span> <span class="o">=</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">tempo</span><span class="p">:</span> <span class="p">(</span><span class="n">tempo</span><span class="o">-</span><span class="n">t_min</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">t_max</span><span class="o">-</span><span class="n">t_min</span><span class="p">)</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;tempo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">tempo_norm</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h4 id="Weighting-the-dataframe">Weighting the dataframe<a class="anchor-link" href="#Weighting-the-dataframe">&#182;</a></h4><p>Since we are trying to capture the general sound of a period of time, it wouldn't make sense for us to weight super popular songs and smaller hits the same. There's a lot of ways we could do this, but for simplicity let's just assume that a top-5 song is something you are going to hear roughly 10 times for every time you might hear a song on the bottom quarter of the charts. Using some basic bucketing rules, we can assign a weight ('rank_weight') to each track to represent how popular it was at that point.</p>
+<p>But how to use that weight to inform the median value and to select the correct medoids? I simply created a new dataframe where there are n representations of a track in a chart period based on the rank weight. As such, I can use that weighted dataframe to find the weighted median and other values.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="k">def</span> <span class="nf">create_weighted_df</span><span class="p">(</span><span class="n">dataframe</span><span class="p">):</span> 
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    &#39;rank&#39; is a naive way of assigning weight to each song based on buckets within the chart. </span>
+<span class="sd">    This multiplies a given track by the weight of n, which helps to approximate weight</span>
+<span class="sd">    - helps created w_medaians, w_medoids, and eventaully for w_cluster_spread</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    
+    <span class="n">additional_df</span> <span class="o">=</span> <span class="p">[</span><span class="n">dataframe</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">dataframe</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">weight</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;rank_weight&#39;</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="n">weight</span><span class="p">):</span>
+            <span class="n">new_row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+            <span class="n">additional_df</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_row</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;date&#39;</span><span class="p">])</span>
+    <span class="n">weighted_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">additional_df</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">columns</span><span class="o">=</span><span class="n">additional_df</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">weighted_df</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Medoids">Medoids<a class="anchor-link" href="#Medoids">&#182;</a></h2><p>A lot of the summary stats I use are trivially calculated using something like numpy. For example, fiding the median example of an attribute in a chart period:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="c1"># an example of finding the instance that represents the median value</span>
+
+<span class="n">med_idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">chart_slice</span><span class="p">[</span><span class="n">attribute</span><span class="p">]</span><span class="o">-</span><span class="n">median</span><span class="p">)</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">argsort</span><span class="p">()</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">med</span> <span class="o">=</span> <span class="n">chart_slice</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">chart_slice</span><span class="o">.</span><span class="n">index</span> <span class="o">==</span> <span class="p">(</span><span class="n">med_idx</span> <span class="o">+</span> <span class="n">index_start</span><span class="p">)]</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>One of the things I was really interesting in when I started working with this data was the concept of trying to figure out a measure of centrality (or 'typicallity'?) for n-dimensional data. In other words, given a chart period, how could I determine what the central tendency was for danceability, valence, tempo, energy, etc.</p>
+<p>A chart period with n-dimesions is a cluster of n-dimensions, and so what something I wanted to look for was a data point that was as close to the centroid of that shape as possible, or the <strong> medoid </strong>. In particular, I wanted to use n-dimensional medoids to help me understand the total amount of change, from chart period to chart period, of the central tendency of that music.</p>
+<p>I used scikit-learn's implementation of KMeans to find the centroid of my data (using the assumption that the data can be described as a single cluster, which is definitely a large assumption):</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.cluster</span> <span class="kn">import</span> <span class="n">KMeans</span>
+<span class="n">kmeans</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span><span class="n">n_clusters</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+<span class="n">centroid</span> <span class="o">=</span> <span class="n">kmeans</span><span class="o">.</span><span class="n">cluster_centers_</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>This gives me a centroid value of n-dimensions, which can be thought of as coordinates in n-dimensional space. Now what I need to do is do a pairwise comparison for each track value against the centroid to find out how far away from the medodid they are, and then select the closest data point as the medodid (and my representative central data point for that chart period).</p>
+<h1 id="Fix-below">Fix below<a class="anchor-link" href="#Fix-below">&#182;</a></h1>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span><span class="c1"># fix this</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">X</span><span class="o">.</span><span class="n">itertuples</span><span class="p">():</span> 
+    <span class="n">values</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+    <span class="n">total_distance</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">values</span><span class="p">):</span>
+        <span class="n">frame</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s1">&#39;centroid&#39;</span><span class="p">,</span> <span class="n">centroid</span><span class="p">)</span> 
+        <span class="n">frame</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s1">&#39;dimensions&#39;</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">)</span> 
+        <span class="n">frame</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">x</span><span class="o">.</span><span class="n">_fields</span><span class="p">[</span><span class="n">ix</span><span class="o">+</span><span class="mi">1</span><span class="p">],</span> <span class="n">y</span><span class="p">)</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span><span class="o">-</span><span class="n">centroid</span><span class="p">[</span><span class="n">ix</span><span class="p">])</span> 
+        <span class="n">distance_setter</span> <span class="o">=</span> <span class="s1">&#39;{}_distance&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">_fields</span><span class="p">[</span><span class="n">ix</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">frame</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">distance_setter</span><span class="p">,</span> <span class="n">dist</span><span class="p">)</span>
+        <span class="n">total_distance</span> <span class="o">=</span> <span class="n">dist</span> <span class="o">+</span> <span class="n">total_distance</span>
+    <span class="n">frame</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s1">&#39;distance&#39;</span><span class="p">,</span> <span class="n">total_distance</span><span class="p">)</span> 
+    <span class="n">total_distance</span> <span class="o">=</span> <span class="mi">0</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p><strong> Pythogrean! </strong></p>
+<p>At one point writing this code I realized that I was just adding up the total distance of | x.dimension - centroid.dimension |, which makes no sense. You don't find a hypotenuse by adding A + B to get C.</p>
+<p>But wait - what is the rule for finding a hypotenuse in n-dimensions? The answer is simple and <a href="https://arxiv.org/pdf/math/0309005.pdf">pretty cool</a>: just an extension of the pythagorean theorum into as many dimensions as you need to go:</p>
+$$ 
+a^2 + b^2 +c^2 +d^2 + e^2 + {...} = y^2
+$$<p>You can thank me next time you need to measure a hypercube.</p>
+<p><img src="https://media.giphy.com/media/m5YkOxtehe0qk/giphy.gif" alt=""></p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span> 
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h4 id="Cluster-Spread">Cluster Spread<a class="anchor-link" href="#Cluster-Spread">&#182;</a></h4><p>Representing our data as a n-dimensional cluster also gives us the opportunity to think of the total spread of the cluster itself - or how closely packed (or not) the data is to this medoid. Who cares? Well, we can use this concept of spread as a way of representing 'sameness' of sound within a chart period, or periods where music sounded somewhat the same, at least according to the features that we have.</p>
+<p>Again, this value (which we calculate as just the total distance of all points within a cluster from the centroid, divided by the points) is highly dependent on whether or not our cluster really represents a single cluster or not. One of the things I'd like to noodle on with this data is:</p>
+<h4 id="Cluster-analysis">Cluster analysis<a class="anchor-link" href="#Cluster-analysis">&#182;</a></h4><p>Are the data from a given chart a single cluster? Or can we identify meaningful and distict clusters within a chart period - or even, within a larger period of time?</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Making-(Semi)-Pretty-Graphs">Making (Semi) Pretty Graphs<a class="anchor-link" href="#Making-(Semi)-Pretty-Graphs">&#182;</a></h2><p>Plotting data using python isn't always great, and many of the best vizulizations I've seen out there are pretty much done in d3 or other javascript libraries. But since my javascript skills have atrophied a little in the last few years, I was looking instead for pythonicly-centered ways of taking my data and plotting it out.</p>
+<p><strong> <a href="https://matplotlib.org/">Matplotlib</a> / Seaborn / etc </strong></p>
+<p>Kinda the default way to plot data in python, and nearly everything else piles on top of its syntax. I went this route as well. Eventually I just wrote a function that allowed me to more dynamicaly set variables to my liking. I used a lot of <a href="http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/">Randy Olson's example code</a> to cut down on visual noise (thanks Randy!).</p>
+<p>There's a lot you can do in matplotlib, and a lot more than I know how to do. Here's a cool violin chart I never used, and that looks like a stingray:</p>
+<p><img src="http://i.imgur.com/HvyQbbx.png" alt=""></p>
+<p><strong> <a href="mpld3.github.io">MPLD3</a> </strong></p>
+<p>This is awesome, and what I used to create nearly all of the graphs in my analysis. MPLD3 bridges Python over to the very popular JS library D3, and provides plug-ins for tooltips and interactive legends and all sorts of other great stuff. I had to stuggle a lot with the way it exports the graph to JS / HTML in some cases, but it is fantastic.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython2"><pre><span></span> 
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+    </div>
+  </div>
